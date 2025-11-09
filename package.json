@@ -1,0 +1,81 @@
+{
+  "name": "k9guard",
+  "version": "1.0.0",
+  "description": "A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript projects with cryptographic security and multi-language support",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "npx tsx src/test.ts",
+    "build": "npx tsc --noEmit",
+    "lint": "npx eslint src --ext .ts",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "keywords": [
+    "captcha",
+    "security",
+    "cryptography",
+    "typescript",
+    "javascript",
+    "authentication",
+    "verification",
+    "bot-protection",
+    "spam-prevention",
+    "nist",
+    "owasp",
+    "gdpr",
+    "kvkk",
+    "sha256",
+    "multi-language",
+    "i18n",
+    "math-captcha",
+    "riddle-captcha",
+    "logic-captcha",
+    "k9crypt"
+  ],
+  "author": {
+    "name": "K9Crypt",
+    "url": "https://k9crypt.xyz/"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/K9Crypt/k9guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/K9Crypt/k9guard/issues"
+  },
+  "homepage": "https://github.com/K9Crypt/k9guard#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
