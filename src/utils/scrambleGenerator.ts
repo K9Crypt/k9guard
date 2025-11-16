@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from './crypto';
 
 export class ScrambleGenerator {
   private static words: string[] = [

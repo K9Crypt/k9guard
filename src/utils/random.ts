@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from './crypto';
 
 export class Random {
   static getRandomNumber(difficulty: 'easy' | 'medium' | 'hard'): number {
@@ -16,7 +16,7 @@ export class Random {
 
   static getRandomOperator(): string {
     const operators = ['+', '-', '*', '/'];
-    const buffer = randomBytes(1);
+    const buffer = randomBytes(1) as any;
     const index = buffer[0]! % operators.length;
     return operators[index]!;
   }
@@ -25,7 +25,7 @@ export class Random {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
     const length = difficulty === 'easy' ? 4 : difficulty === 'medium' ? 6 : 8;
-    const buffer = randomBytes(length);
+    const buffer = randomBytes(length) as any;
     // pick random chars from the charset using crypto random bytes
     for (let i = 0; i < length; i++) {
       result += chars.charAt(buffer[i]! % chars.length);

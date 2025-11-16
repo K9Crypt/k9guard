@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from './crypto';
 import enData from '../locale/en.json';
 import trData from '../locale/tr.json';
 

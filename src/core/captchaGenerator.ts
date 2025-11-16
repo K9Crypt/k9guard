@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes } from '../utils/crypto';
 import { Random } from '../utils/random';
 import { RiddleBank } from '../utils/riddleBank';
 import { SequenceGenerator } from '../utils/sequenceGenerator';
@@ -200,7 +200,7 @@ export class CaptchaGenerator {
   // generates a mixed captcha by randomly selecting a type and generating accordingly
   private generateMixed(): MixedCaptcha {
     const types: ('math' | 'text' | 'riddle' | 'sequence' | 'scramble' | 'logic' | 'reverse')[] = ['math', 'text', 'riddle', 'sequence', 'scramble', 'logic', 'reverse'];
-    const buffer = randomBytes(1);
+    const buffer = randomBytes(1) as any;
     const randomType = types[buffer[0]! % types.length]!;
 
     const previousType = this.standardOptions?.type;

@@ -1,28 +1,11 @@
 {
   "name": "k9guard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript projects with cryptographic security and multi-language support",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
+  "main": "index.ts",
   "type": "module",
-  "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "test": "npx tsx src/test.ts",
-    "build": "npx tsc --noEmit",
-    "lint": "npx eslint src --ext .ts",
-    "prepublishOnly": "npm run build && npm run test"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "captcha",

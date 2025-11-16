@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash } from '../utils/crypto';
 import type { CaptchaChallenge } from '../types';
 
 export class CaptchaValidator {

@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from './crypto';
 import type { CustomQuestion } from '../types';
 
 export class CustomQuestionGenerator {

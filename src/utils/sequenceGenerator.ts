@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from './crypto';
 
 export class SequenceGenerator {
   static generate(difficulty: 'easy' | 'medium' | 'hard'): { question: string; answer: number | string } {
