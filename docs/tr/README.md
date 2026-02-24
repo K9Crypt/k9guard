@@ -243,21 +243,6 @@ Kullanıcı girdisini `challenge.nonce` üzerinden bulunan sunucu taraflı kayı
 const isValid = captcha.validate(challenge, userAnswer);
 ```
 
-## Test Etme
-
-Dahil edilen test paketini çalıştırın:
-
-```bash
-bun run src/test.ts
-```
-
-Testler şunları içerir:
-- Tüm CAPTCHA türleri için doğru/yanlış/uç durum girdileri
-- Özel soru doğrulama senaryoları
-- Çok adımlı doğrulamalar
-- Girdi sanitizasyonu
-- Güvenlik doğrulamaları
-
 ## Katkıda Bulunma
 
 Katkılarınızı memnuniyetle karşılıyoruz! Nasıl yardımcı olabilirsiniz:

@@ -243,21 +243,6 @@ Validates user input against the stored server-side record (looked up by `challe
 const isValid = captcha.validate(challenge, userAnswer);
 ```
 
-## Testing
-
-Run the included test suite:
-
-```bash
-bun run src/test.ts
-```
-
-Tests include:
-- All CAPTCHA types with correct/incorrect/edge case inputs
-- Custom question validation
-- Multi-step challenges
-- Input sanitization
-- Security validations
-
 ## Contributing
 
 We welcome contributions! Here's how you can help:
