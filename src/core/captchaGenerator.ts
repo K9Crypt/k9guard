@@ -1,19 +1,25 @@
 import { createHash, randomBytes } from '../utils/crypto';
 import { Random } from '../utils/random';
-import { RiddleBank } from '../utils/riddleBank';
 import { SequenceGenerator } from '../utils/sequenceGenerator';
 import { ScrambleGenerator } from '../utils/scrambleGenerator';
-import { LogicGenerator } from '../utils/logicGenerator';
 import { ReverseGenerator } from '../utils/reverseGenerator';
 import { CustomQuestionGenerator } from '../utils/customQuestionGenerator';
 import { CustomQuestionValidator } from '../validators/customQuestionValidator';
-import type { K9GuardOptions, K9GuardCustomOptions, CaptchaChallenge, MathCaptcha, TextCaptcha, RiddleCaptcha, SequenceCaptcha, ScrambleCaptcha, LogicCaptcha, ReverseCaptcha, MixedCaptcha, CustomCaptcha, CustomQuestion } from '../types';
+import { ImageGenerator } from '../utils/imageGenerator';
+import { EmojiGenerator } from '../utils/emojiGenerator';
+import type { K9GuardOptions, K9GuardCustomOptions, CaptchaChallenge, StoredChallenge, MathCaptcha, TextCaptcha, SequenceCaptcha, ScrambleCaptcha, ReverseCaptcha, MixedCaptcha, CustomCaptcha, ImageCaptcha, EmojiCaptcha, CustomQuestion } from '../types';
+
+// Bounded nonce store: evicts the oldest entry once capacity is reached to
+// prevent unbounded memory growth while still blocking same-process replays.
+const NONCE_STORE_MAX = 10_000;
 
 export class CaptchaGenerator {
   private standardOptions: K9GuardOptions | null = null;
   private customOptions: K9GuardCustomOptions | null = null;
   private customGenerator: CustomQuestionGenerator | null = null;
-  private usedNonces: Set<string> = new Set();
+  // Keyed by nonce; stores the full server-side record including answer hash and salt.
+  // answer, hashedAnswer and salt are never included in the public CaptchaChallenge.
+  private store: Map<string, StoredChallenge> = new Map();
 
   // set up the generator and check custom questions if they exist
   constructor(options: K9GuardOptions | K9GuardCustomOptions) {
@@ -46,39 +52,41 @@ export class CaptchaGenerator {
     return this.standardOptions.difficulty;
   }
 
-  private getLocale(): 'en' | 'tr' {
-    if (!this.standardOptions) {
-      return 'en';
-    }
-    return this.standardOptions.locale || 'en';
+  // Look up the internal StoredChallenge by nonce for use during validation.
+  lookup(nonce: string): StoredChallenge | undefined {
+    return this.store.get(nonce);
   }
 
-  // add security stuff to the challenge like unique nonce, expiry time, and hashed answer
-  private createChallenge(base: Omit<CaptchaChallenge, 'nonce' | 'expiry' | 'hashedAnswer' | 'salt'>): CaptchaChallenge {
+  // Stores the full record server-side; returns a public CaptchaChallenge
+  // that is safe to send to the client (no answer, hashedAnswer or salt).
+  private createChallenge(base: Omit<StoredChallenge, 'nonce' | 'expiry' | 'hashedAnswer' | 'salt'>): CaptchaChallenge {
     let nonce: string;
     do {
-      // NOTE: make sure each nonce is unique to stop replay attacks
       nonce = Random.generateNonce();
-    } while (this.usedNonces.has(nonce));
+    } while (this.store.has(nonce));
 
-    this.usedNonces.add(nonce);
+    // evict oldest entry before inserting to cap memory at NONCE_STORE_MAX
+    if (this.store.size >= NONCE_STORE_MAX) {
+      const oldest = this.store.keys().next().value;
+      if (oldest !== undefined) {
+        this.store.delete(oldest);
+      }
+    }
 
-    // challenge will expire in 5 minutes
     const expiry = Date.now() + 5 * 60 * 1000;
     const salt = Random.generateSalt();
-    // never save the real answer, only the hash for checking later
+    // answer is never sent to the client; only its salted hash is stored
     const hashedAnswer = createHash('sha256').update(base.answer.toString() + salt).digest('hex');
 
-    return {
-      ...base,
-      nonce,
-      expiry,
-      hashedAnswer,
-      salt
-    };
+    const stored: StoredChallenge = { ...base, nonce, expiry, hashedAnswer, salt };
+    this.store.set(nonce, stored);
+
+    // strip sensitive fields before returning to caller
+    const { answer: _answer, hashedAnswer: _ha, salt: _salt, ...publicChallenge } = stored;
+    return publicChallenge as CaptchaChallenge;
   }
 
-  // do the math based on which operator we got
+  // evaluate arithmetic expression for the math captcha type
   private calculateMath(a: number, op: string, b: number): number {
     if (op === '+') {
       return a + b;
@@ -91,16 +99,15 @@ export class CaptchaGenerator {
     }
     if (op === '/') {
       if (b === 0) {
-        // can't divide by zero, return NaN
         return Number.NaN;
       }
-      // round to 2 decimals to avoid weird floating point numbers
+      // round to 2 decimals to avoid floating point representation issues
       return Math.round((a / b) * 100) / 100;
     }
     return 0;
   }
 
-  // main function that picks the right generator for the captcha type
+  // dispatch to the correct generator based on configured captcha type
   generate(): CaptchaChallenge {
     if (this.customOptions) {
       return this.generateCustom();
@@ -118,23 +125,23 @@ export class CaptchaGenerator {
     if (captchaType === 'text') {
       return this.generateText();
     }
-    if (captchaType === 'riddle') {
-      return this.generateRiddle();
-    }
     if (captchaType === 'sequence') {
       return this.generateSequence();
     }
     if (captchaType === 'scramble') {
       return this.generateScramble();
     }
-    if (captchaType === 'logic') {
-      return this.generateLogic();
-    }
     if (captchaType === 'reverse') {
       return this.generateReverse();
     }
     if (captchaType === 'multi') {
       return this.generateMulti();
+    }
+    if (captchaType === 'image') {
+      return this.generateImage();
+    }
+    if (captchaType === 'emoji') {
+      return this.generateEmoji();
     }
     return this.generateMixed();
   }
@@ -145,36 +152,47 @@ export class CaptchaGenerator {
     }
 
     const custom = this.customGenerator.generate();
+
+    // an empty answer would allow bypass with any blank input; reject early
+    if (!custom.question || !custom.answer) {
+      throw new Error('Custom question pool returned an empty question or answer');
+    }
+
     return this.createChallenge({ type: 'custom', question: custom.question, answer: custom.answer }) as CustomCaptcha;
   }
 
   private generateMath(): MathCaptcha {
-    let num1 = Random.getRandomNumber(this.getDifficulty());
-    let num2 = Random.getRandomNumber(this.getDifficulty());
+    const difficulty = this.getDifficulty();
+    let num1 = Random.getRandomNumber(difficulty);
+    let num2 = Random.getRandomNumber(difficulty);
     const operator = Random.getRandomOperator();
 
+    // guarantee non-zero divisor; add 1 so the result is always >= 1
     if (operator === '/' && num2 === 0) {
-      num2 = Random.getRandomNumber(this.getDifficulty()) + 1;
+      num2 = Random.getRandomNumber(difficulty) + 1;
     }
 
-    const question = `${num1} ${operator} ${num2}`;
     const answer = this.calculateMath(num1, operator, num2);
 
-    if (isNaN(answer)) {
-      return this.generateMath();
+    // calculateMath only returns NaN for division by zero, which is already
+    // prevented above — but guard here avoids any future regression without
+    // unbounded recursion: iterate instead of recurse
+    if (isNaN(answer) || !isFinite(answer)) {
+      num1 = Random.getRandomNumber(difficulty);
+      num2 = Random.getRandomNumber(difficulty) + 1;
+      return this.createChallenge({
+        type: 'math',
+        question: `${num1} + ${num2}`,
+        answer: num1 + num2
+      }) as MathCaptcha;
     }
 
-    return this.createChallenge({ type: 'math', question, answer }) as MathCaptcha;
+    return this.createChallenge({ type: 'math', question: `${num1} ${operator} ${num2}`, answer }) as MathCaptcha;
   }
 
   private generateText(): TextCaptcha {
     const text = Random.generateRandomString(this.getDifficulty());
     return this.createChallenge({ type: 'text', question: text, answer: text }) as TextCaptcha;
-  }
-
-  private generateRiddle(): RiddleCaptcha {
-    const riddle = RiddleBank.getRandom(this.getLocale(), this.getDifficulty());
-    return this.createChallenge({ type: 'riddle', question: riddle.question, answer: riddle.answer }) as RiddleCaptcha;
   }
 
   private generateSequence(): SequenceCaptcha {
@@ -187,41 +205,65 @@ export class CaptchaGenerator {
     return this.createChallenge({ type: 'scramble', question: scr.question, answer: scr.answer }) as ScrambleCaptcha;
   }
 
-  private generateLogic(): LogicCaptcha {
-    const logic = LogicGenerator.getRandom(this.getLocale(), this.getDifficulty());
-    return this.createChallenge({ type: 'logic', question: logic.question, answer: logic.answer }) as LogicCaptcha;
-  }
-
   private generateReverse(): ReverseCaptcha {
     const rev = ReverseGenerator.generate(this.getDifficulty());
     return this.createChallenge({ type: 'reverse', question: rev.question, answer: rev.answer }) as ReverseCaptcha;
   }
 
-  // generates a mixed captcha by randomly selecting a type and generating accordingly
+  // randomly selects one of the available non-compound types
   private generateMixed(): MixedCaptcha {
-    const types: ('math' | 'text' | 'riddle' | 'sequence' | 'scramble' | 'logic' | 'reverse')[] = ['math', 'text', 'riddle', 'sequence', 'scramble', 'logic', 'reverse'];
+    const types = ['math', 'text', 'sequence', 'scramble', 'reverse'] as const;
     const buffer = randomBytes(1) as any;
     const randomType = types[buffer[0]! % types.length]!;
 
-    const previousType = this.standardOptions?.type;
-    if (this.standardOptions) {
-      // NOTE: change the type temporarily so we can call generate() again
-      this.standardOptions.type = randomType;
+    // resolve the raw answer directly so we can pass it to createChallenge;
+    // avoids mutating this.standardOptions and prevents race conditions
+    let question: string;
+    let answer: string | number;
+
+    if (randomType === 'math') {
+      const difficulty = this.getDifficulty();
+      let num1 = Random.getRandomNumber(difficulty);
+      let num2 = Random.getRandomNumber(difficulty);
+      const operator = Random.getRandomOperator();
+      if (operator === '/' && num2 === 0) {
+        num2 = Random.getRandomNumber(difficulty) + 1;
+      }
+      const result = this.calculateMath(num1, operator, num2);
+      if (isNaN(result) || !isFinite(result)) {
+        num1 = Random.getRandomNumber(difficulty);
+        num2 = Random.getRandomNumber(difficulty) + 1;
+        question = `${num1} + ${num2}`;
+        answer = num1 + num2;
+      } else {
+        question = `${num1} ${operator} ${num2}`;
+        answer = result;
+      }
+    } else if (randomType === 'text') {
+      const text = Random.generateRandomString(this.getDifficulty());
+      question = text;
+      answer = text;
+    } else if (randomType === 'sequence') {
+      const seq = SequenceGenerator.generate(this.getDifficulty());
+      question = seq.question;
+      answer = seq.answer;
+    } else if (randomType === 'scramble') {
+      const scr = ScrambleGenerator.generate(this.getDifficulty());
+      question = scr.question;
+      answer = scr.answer;
+    } else {
+      const rev = ReverseGenerator.generate(this.getDifficulty());
+      question = rev.question;
+      answer = rev.answer;
     }
 
-    const challenge = this.generate();
-    if (this.standardOptions && previousType) {
-      // put back the old type when done
-      this.standardOptions.type = previousType;
-    }
-
-    return this.createChallenge({ ...challenge, type: 'mixed' }) as MixedCaptcha;
+    return this.createChallenge({ type: 'mixed', question, answer }) as MixedCaptcha;
   }
 
-  // make a two-step captcha with math and riddle
+  // two-step captcha: math + scramble, both must be solved correctly
   private generateMulti(): CaptchaChallenge {
-    const step1 = this.generateMath();
-    const step2 = this.generateRiddle();
+    const step1 = this.store.get(this.generateMath().nonce)!;
+    const step2 = this.store.get(this.generateScramble().nonce)!;
 
     return this.createChallenge({
       type: 'multi',
@@ -229,5 +271,28 @@ export class CaptchaGenerator {
       answer: '',
       steps: [step1, step2]
     });
+  }
+
+  // generates an SVG-based visual CAPTCHA immune to trivial OCR attacks
+  private generateImage(): ImageCaptcha {
+    const result = ImageGenerator.generate(this.getDifficulty());
+    return this.createChallenge({
+      type: 'image',
+      question: result.question,
+      answer: result.answer,
+      image: result.image
+    }) as ImageCaptcha;
+  }
+
+  // generates an emoji selection CAPTCHA: user picks all emojis from a given category
+  private generateEmoji(): EmojiCaptcha {
+    const result = EmojiGenerator.generate(this.getDifficulty());
+    return this.createChallenge({
+      type: 'emoji',
+      question: result.question,
+      answer: result.answer,
+      emojis: result.emojis,
+      category: result.category
+    }) as EmojiCaptcha;
   }
 }

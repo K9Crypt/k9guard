@@ -1,24 +1,35 @@
 import { randomBytes } from './crypto';
 
 export class ScrambleGenerator {
-  private static words: string[] = [
+  private static readonly easyWords: string[] = [
+    'apple', 'cat', 'dog', 'house', 'sun', 'moon', 'car', 'tree', 'book', 'water'
+  ];
+
+  private static readonly mediumWords: string[] = [
     'apple', 'cat', 'dog', 'house', 'sun', 'moon', 'car', 'tree', 'book', 'water',
     'bread', 'milk', 'fish', 'bird', 'flower', 'star', 'hand', 'eye', 'nose', 'mouth'
   ];
 
+  // hard pool: longer words with uncommon letter patterns to resist guessing
+  private static readonly hardWords: string[] = [
+    'typescript', 'javascript', 'algorithm', 'encryption', 'blockchain',
+    'metamorphosis', 'cryptography', 'synchronize', 'parallelism', 'obfuscation',
+    'infrastructure', 'authentication', 'authorization', 'vulnerability', 'orchestration'
+  ];
+
   static generate(difficulty: 'easy' | 'medium' | 'hard'): { question: string; answer: string } {
-    let word: string;
-    const buffer = randomBytes(4);
-    // convert crypto bytes to a float between 0 and 1
-    const rand = buffer.readUInt32LE(0) / 0xFFFFFFFF;
-    
+    let pool: string[];
     if (difficulty === 'easy') {
-      word = this.words[Math.floor(rand * 10)]!;
+      pool = this.easyWords;
     } else if (difficulty === 'medium') {
-      word = this.words[Math.floor(rand * this.words.length)]!;
+      pool = this.mediumWords;
     } else {
-      word = 'typescript';
+      pool = this.hardWords;
     }
+
+    const buffer = randomBytes(4);
+    const rand = buffer.readUInt32LE(0) / 0xFFFFFFFF;
+    const word = pool[Math.floor(rand * pool.length)]!;
     
     const scrambled = this.scramble(word);
     return { question: scrambled, answer: word };
@@ -26,10 +37,11 @@ export class ScrambleGenerator {
 
   private static scramble(word: string): string {
     const arr = word.split('');
-    // NOTE: fisher yates shuffle using crypto random for each swap
-    for (let i = arr.length - 1; i > 0; i--) {
-      const buffer = randomBytes(4);
-      const j = buffer.readUInt32LE(0) % (i + 1);
+    const n   = arr.length;
+    // batch all uint32 values for Fisher-Yates in one crypto call (n-1 swaps × 4 bytes)
+    const batchBuf = randomBytes(n * 4);
+    for (let i = n - 1; i > 0; i--) {
+      const j = batchBuf.readUInt32LE((n - 1 - i) * 4) % (i + 1);
       [arr[i]!, arr[j]!] = [arr[j]!, arr[i]!];
     }
     return arr.join('');

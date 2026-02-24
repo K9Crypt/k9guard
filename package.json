@@ -1,6 +1,6 @@
 {
   "name": "k9guard",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript projects with cryptographic security and multi-language support",
   "main": "index.ts",
   "type": "module",
@@ -47,12 +47,12 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^20.0.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
-    "eslint": "^8.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^20.19.33",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "typescript": "^5"

@@ -1,3 +1,5 @@
+import { randomBytes } from './crypto';
+
 export class ReverseGenerator {
   private static readonly easyWords = [
     'cat', 'dog', 'sun', 'moon', 'star', 'fish', 'bird', 'tree',
@@ -42,7 +44,9 @@ export class ReverseGenerator {
       wordPool = this.hardWords;
     }
     
-    const text = wordPool![Math.floor(Math.random() * wordPool!.length)]!;
+    const buf = randomBytes(4);
+    const rand = buf.readUInt32LE(0) / 0xFFFFFFFF;
+    const text = wordPool![Math.floor(rand * wordPool!.length)]!;
     const reversed = text.split('').reverse().join('');
     
     return { question: reversed, answer: text };

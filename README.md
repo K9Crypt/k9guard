@@ -4,14 +4,13 @@
 
 # K9Guard
 
-A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript projects with cryptographic security and multi-language support.
+A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript projects with cryptographic security.
 
 ## Features
 
 - **Cryptographically Secure**: NIST SP 800-90A compliant random generation
-- **Multi-Language Support**: English and Turkish locales for riddles and logic questions
-- **9 CAPTCHA Types**: Math, text, riddle, sequence, scramble, logic, reverse, mixed, and multi-step challenges
-- **Security First**: SHA-256 salted hashing, nonce-based session management, and 5-minute expiry
+- **10 CAPTCHA Types**: Math, text, sequence, scramble, reverse, mixed, multi-step, image, emoji, and custom challenges
+- **Security First**: SHA-256 salted hashing, server-side challenge store, nonce-based session management, and 5-minute expiry
 - **Input Validation**: Length limits, type checking, and sanitization to prevent injection attacks
 - **Custom Questions**: Support for your own questions with validation and sanitization
 - **Zero Dependencies**: Lightweight with no external dependencies
@@ -32,8 +31,7 @@ import K9Guard from "k9guard";
 
 const captcha = new K9Guard({
   type: 'math',
-  difficulty: 'medium',
-  locale: 'en'
+  difficulty: 'medium'
 });
 
 // generate a challenge
@@ -69,15 +67,6 @@ const challenge = captcha.generate();
 // Answer: "aB2xY9"
 ```
 
-### Riddle CAPTCHA
-
-```typescript
-const captcha = new K9Guard({ type: 'riddle', difficulty: 'easy', locale: 'en' });
-const challenge = captcha.generate();
-// Output: "What has keys but can't open locks?"
-// Answer: "piano"
-```
-
 ### Sequence CAPTCHA
 
 ```typescript
@@ -96,15 +85,6 @@ const challenge = captcha.generate();
 // Answer: "cat"
 ```
 
-### Logic CAPTCHA
-
-```typescript
-const captcha = new K9Guard({ type: 'logic', difficulty: 'easy', locale: 'en' });
-const challenge = captcha.generate();
-// Output: "Water is dry. True or False?"
-// Answer: "false"
-```
-
 ### Reverse CAPTCHA
 
 ```typescript
@@ -113,6 +93,64 @@ const challenge = captcha.generate();
 // Output: "god"
 // Answer: "dog"
 ```
+
+### Image CAPTCHA
+
+```typescript
+const captcha = new K9Guard({ type: 'image', difficulty: 'medium' });
+const challenge = captcha.generate();
+
+// challenge.image — base64 SVG data URI, render it directly in an <img> tag
+// challenge.question — "Type the characters shown in the image"
+console.log(challenge.image); // "data:image/svg+xml;base64,..."
+
+// validate user input (case-insensitive)
+const isValid = captcha.validate(challenge, "aB3z");
+if (isValid) {
+  console.log("Access granted!");
+} else {
+  console.log("Wrong answer!");
+}
+```
+
+The image is a distorted SVG with:
+- **Rotated & offset characters** per-glyph, randomized color and size
+- **Sinusoidal wave overlays** proportional to difficulty
+- **Noise lines and dots** that break simple segmentation attacks
+- **Case-insensitive validation** — user may type upper or lowercase
+- **No external dependencies** — pure SVG generated server-side
+
+### Emoji CAPTCHA
+
+```typescript
+const captcha = new K9Guard({ type: 'emoji', difficulty: 'medium' });
+const challenge = captcha.generate();
+
+// challenge.emojis — array of emojis to display (6 for medium)
+// challenge.category — the target category name (e.g. "animals")
+// challenge.question — "Select all animals from the list (6 emojis, 3 correct)"
+console.log(challenge.emojis);   // ["🐶", "🍎", "🚗", "🐱", "🌸", "🏀"]
+console.log(challenge.category); // "animals"
+
+// user submits sorted comma-separated zero-based indices of the correct emojis
+// e.g. if emojis[0] and emojis[3] are animals: "0,3"
+const isValid = captcha.validate(challenge, "0,3");
+if (isValid) {
+  console.log("Access granted!");
+} else {
+  console.log("Wrong answer!");
+}
+```
+
+Difficulty controls the number of emojis shown and correct answers required:
+
+| Difficulty | Total emojis | Correct to select |
+|------------|-------------|-------------------|
+| easy       | 4           | 2                 |
+| medium     | 6           | 3                 |
+| hard       | 8           | 4                 |
+
+There are 5 categories (animals, food, vehicles, nature, sports) with 20 emojis each. Distractors are drawn from all other categories. Answer format: sorted comma-separated zero-based indices, e.g. `"0,2,4"`.
 
 ### Mixed CAPTCHA
 
@@ -129,9 +167,9 @@ const captcha = new K9Guard({ type: 'multi', difficulty: 'easy' });
 const challenge = captcha.generate();
 
 if (challenge.steps) {
-  // user must solve both steps
-  const answers = challenge.steps.map(step => step.answer.toString());
-  const userInput = JSON.stringify(answers);
+  // user must solve both steps; steps expose only question/nonce/expiry — not the answer
+  // answers are submitted as a JSON array of strings
+  const userInput = JSON.stringify(["22", "typescript"]);
   const isValid = captcha.validate(challenge, userInput);
 }
 ```
@@ -160,9 +198,8 @@ const isValid = captcha.validate(challenge, "paris");
 
 ```typescript
 interface K9GuardOptions {
-  type: 'math' | 'text' | 'riddle' | 'sequence' | 'scramble' | 'logic' | 'reverse' | 'mixed' | 'multi';
+  type: 'math' | 'text' | 'sequence' | 'scramble' | 'reverse' | 'mixed' | 'multi' | 'image' | 'emoji';
   difficulty: 'easy' | 'medium' | 'hard';
-  locale?: 'en' | 'tr'; // default: 'en'
 }
 ```
 
@@ -185,18 +222,22 @@ interface CustomQuestion {
 
 #### `generate(): CaptchaChallenge`
 
-Generates a new CAPTCHA challenge with unique nonce, expiry time, and hashed answer.
+Generates a new CAPTCHA challenge. Returns a **public** object safe to send to the client — `answer`, `hashedAnswer` and `salt` are stripped and stored server-side, keyed by `nonce`.
 
 ```typescript
 const challenge = captcha.generate();
-console.log(challenge.question); // the question to show user
-console.log(challenge.nonce); // unique session identifier
-console.log(challenge.expiry); // timestamp when challenge expires
+console.log(challenge.question);  // the question to show the user
+console.log(challenge.nonce);     // unique session identifier (pass back on validate)
+console.log(challenge.expiry);    // Unix ms timestamp when challenge expires
+console.log(challenge.image);     // base64 SVG data URI (only for type: 'image')
+console.log(challenge.emojis);    // emoji array (only for type: 'emoji')
+console.log(challenge.category);  // category name (only for type: 'emoji')
+// challenge.answer / .hashedAnswer / .salt — NOT present; never sent to client
 ```
 
 #### `validate(challenge: CaptchaChallenge, userInput: string): boolean`
 
-Validates user input against the challenge. Returns `true` if correct, `false` otherwise.
+Validates user input against the stored server-side record (looked up by `challenge.nonce`). Returns `true` if correct, `false` otherwise. Tampered `hashedAnswer` or `salt` on the public challenge object have no effect.
 
 ```typescript
 const isValid = captcha.validate(challenge, userAnswer);
@@ -213,7 +254,6 @@ bun run src/test.ts
 Tests include:
 - All CAPTCHA types with correct/incorrect/edge case inputs
 - Custom question validation
-- Locale switching
 - Multi-step challenges
 - Input sanitization
 - Security validations

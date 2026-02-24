@@ -15,7 +15,7 @@ export class K9Guard {
 
   private processOptions(options: unknown): K9GuardOptions | K9GuardCustomOptions {
     if (typeof options !== 'object' || options === null) {
-      return { type: 'math', difficulty: 'medium', locale: 'en' };
+      return { type: 'math', difficulty: 'medium' };
     }
 
     const opt = options as Record<string, unknown>;
@@ -36,10 +36,12 @@ export class K9Guard {
       } as K9GuardCustomOptions;
     }
 
+    const validTypes = ['math', 'text', 'sequence', 'scramble', 'reverse', 'mixed', 'multi', 'image', 'emoji'];
+    const type = validTypes.includes(opt.type as string) ? opt.type : 'math';
+
     return {
-      type: opt.type || 'math',
-      difficulty: opt.difficulty || 'medium',
-      locale: opt.locale || 'en'
+      type,
+      difficulty: opt.difficulty || 'medium'
     } as K9GuardOptions;
   }
 
@@ -56,12 +58,20 @@ export class K9Guard {
       return false;
     }
 
-    const now = Date.now();
-    if (now > challenge.expiry) {
+    // resolve the stored record by nonce; reject if not found or expired.
+    // hashedAnswer and salt come from the server-side store, never from the client,
+    // which prevents hash-injection attacks.
+    const stored = this.generator.lookup(challenge.nonce);
+    if (!stored) {
       return false;
     }
 
-    return CaptchaValidator.validate(challenge, userInput);
+    const now = Date.now();
+    if (now > stored.expiry) {
+      return false;
+    }
+
+    return CaptchaValidator.validate(stored, userInput);
   }
 
   private isValidChallenge(challenge: unknown): boolean {
@@ -74,10 +84,8 @@ export class K9Guard {
     return (
       typeof c.type === 'string' &&
       typeof c.question === 'string' &&
-      typeof c.nonce === 'string' &&
-      typeof c.expiry === 'number' &&
-      typeof c.hashedAnswer === 'string' &&
-      typeof c.salt === 'string'
+      typeof c.nonce === 'string' && c.nonce.length > 0 &&
+      typeof c.expiry === 'number'
     );
   }
 }

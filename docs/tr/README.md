@@ -4,14 +4,13 @@
 
 # K9Guard
 
-TypeScript/JavaScript projeleri için kriptografik güvenlik ve çok dilli destek sunan güvenli, hafif ve esnek bir CAPTCHA modülü.
+TypeScript/JavaScript projeleri için kriptografik güvenlik sunan güvenli, hafif ve esnek bir CAPTCHA modülü.
 
 ## Özellikler
 
 - **Kriptografik Güvenlik**: NIST SP 800-90A standardına uyumluluk sağlanmıştır
-- **Çok Dilli Destek**: Bulmaca ve mantık soruları için İngilizce ve Türkçe dil desteği mevcuttur
-- **9 CAPTCHA Türü**: Matematik, metin, bulmaca, dizi, karıştırma, mantık, ters çevirme, karma ve çok adımlı doğrulama yöntemleri
-- **Güvenlik Odaklı**: SHA-256 tuzlu hash algoritması, nonce tabanlı oturum yönetimi ve 5 dakikalık geçerlilik süresi
+- **10 CAPTCHA Türü**: Matematik, metin, dizi, karıştırma, ters çevirme, karma, çok adımlı, görsel, emoji ve özel doğrulama yöntemleri
+- **Güvenlik Odaklı**: SHA-256 tuzlu hash algoritması, sunucu taraflı challenge deposu, nonce tabanlı oturum yönetimi ve 5 dakikalık geçerlilik süresi
 - **Girdi Doğrulama**: Enjeksiyon saldırılarını önlemek için uzunluk sınırlamaları, tip kontrolü ve sanitizasyon
 - **Özel Sorular**: Doğrulama ve sanitizasyon ile kendi sorularınızı tanımlama desteği
 - **Sıfır Bağımlılık**: Harici bağımlılık gerektirmeyen hafif yapı
@@ -32,8 +31,7 @@ import K9Guard from "k9guard";
 
 const captcha = new K9Guard({
   type: 'math',
-  difficulty: 'medium',
-  locale: 'tr'
+  difficulty: 'medium'
 });
 
 // doğrulama sorusu oluştur
@@ -69,15 +67,6 @@ const challenge = captcha.generate();
 // Cevap: "aB2xY9"
 ```
 
-### Bulmaca CAPTCHA
-
-```typescript
-const captcha = new K9Guard({ type: 'riddle', difficulty: 'easy', locale: 'tr' });
-const challenge = captcha.generate();
-// Çıktı: "Tuşları vardır ama kilit açamaz. Nedir?"
-// Cevap: "piyano"
-```
-
 ### Dizi CAPTCHA
 
 ```typescript
@@ -92,17 +81,8 @@ const challenge = captcha.generate();
 ```typescript
 const captcha = new K9Guard({ type: 'scramble', difficulty: 'easy' });
 const challenge = captcha.generate();
-// Çıktı: "iked"
-// Cevap: "kedi"
-```
-
-### Mantık CAPTCHA
-
-```typescript
-const captcha = new K9Guard({ type: 'logic', difficulty: 'easy', locale: 'tr' });
-const challenge = captcha.generate();
-// Çıktı: "Su kuru bir maddedir. Doğru mu Yanlış mı?"
-// Cevap: "yanlış"
+// Çıktı: "tac"
+// Cevap: "cat"
 ```
 
 ### Ters Çevirme CAPTCHA
@@ -110,9 +90,67 @@ const challenge = captcha.generate();
 ```typescript
 const captcha = new K9Guard({ type: 'reverse', difficulty: 'easy' });
 const challenge = captcha.generate();
-// Çıktı: "köpek"
-// Cevap: "kepök"
+// Çıktı: "god"
+// Cevap: "dog"
 ```
+
+### Görsel CAPTCHA
+
+```typescript
+const captcha = new K9Guard({ type: 'image', difficulty: 'medium' });
+const challenge = captcha.generate();
+
+// challenge.image — doğrudan <img> etiketinde kullanılabilecek base64 SVG data URI
+// challenge.question — "Type the characters shown in the image"
+console.log(challenge.image); // "data:image/svg+xml;base64,..."
+
+// kullanıcı yanıtını doğrula (büyük/küçük harf duyarsız)
+const isValid = captcha.validate(challenge, "aB3z");
+if (isValid) {
+  console.log("Erişim izni verildi!");
+} else {
+  console.log("Yanlış cevap!");
+}
+```
+
+Görsel CAPTCHA'nın güvenlik özellikleri:
+- **Karakter başına rotasyon ve offset** — rastgele renk ve boyutla OCR direnci
+- **Sinüzoidal dalga katmanları** — zorluk seviyesine orantılı üst üste bindirilir
+- **Gürültü çizgileri ve noktaları** — basit segmentasyon saldırılarını engeller
+- **Büyük/küçük harf duyarsız doğrulama** — kullanıcı hem büyük hem küçük harf girebilir
+- **Sıfır dış bağımlılık** — tamamen sunucu tarafında saf SVG ile üretilir
+
+### Emoji CAPTCHA
+
+```typescript
+const captcha = new K9Guard({ type: 'emoji', difficulty: 'medium' });
+const challenge = captcha.generate();
+
+// challenge.emojis — gösterilecek emoji dizisi (medium için 6 adet)
+// challenge.category — hedef kategori adı (örn. "animals")
+// challenge.question — "Select all animals from the list (6 emojis, 3 correct)"
+console.log(challenge.emojis);   // ["🐶", "🍎", "🚗", "🐱", "🌸", "🏀"]
+console.log(challenge.category); // "animals"
+
+// kullanıcı, doğru emojilerin sıfır tabanlı indekslerini virgülle ayırarak gönderir
+// örn. emojis[0] ve emojis[3] hayvan ise: "0,3"
+const isValid = captcha.validate(challenge, "0,3");
+if (isValid) {
+  console.log("Erişim izni verildi!");
+} else {
+  console.log("Yanlış cevap!");
+}
+```
+
+Zorluk seviyesi gösterilen emoji sayısını ve doğru seçilmesi gereken emoji sayısını belirler:
+
+| Zorluk  | Toplam emoji | Seçilmesi gereken |
+|---------|-------------|-------------------|
+| easy    | 4           | 2                 |
+| medium  | 6           | 3                 |
+| hard    | 8           | 4                 |
+
+5 kategori mevcuttur (animals, food, vehicles, nature, sports), her birinde 20 emoji bulunur. Yanıltıcı emojiler diğer kategorilerden seçilir. Cevap formatı: sıralanmış, virgülle ayrılmış sıfır tabanlı indeksler; örn. `"0,2,4"`.
 
 ### Karma CAPTCHA
 
@@ -129,9 +167,9 @@ const captcha = new K9Guard({ type: 'multi', difficulty: 'easy' });
 const challenge = captcha.generate();
 
 if (challenge.steps) {
-  // kullanıcı her iki adımı da çözmelidir
-  const answers = challenge.steps.map(step => step.answer.toString());
-  const userInput = JSON.stringify(answers);
+  // kullanıcı her iki adımı da çözmelidir; steps yalnızca question/nonce/expiry içerir
+  // cevaplar JSON dizisi olarak gönderilir
+  const userInput = JSON.stringify(["22", "typescript"]);
   const isValid = captcha.validate(challenge, userInput);
 }
 ```
@@ -160,9 +198,8 @@ const isValid = captcha.validate(challenge, "ankara");
 
 ```typescript
 interface K9GuardOptions {
-  type: 'math' | 'text' | 'riddle' | 'sequence' | 'scramble' | 'logic' | 'reverse' | 'mixed' | 'multi';
+  type: 'math' | 'text' | 'sequence' | 'scramble' | 'reverse' | 'mixed' | 'multi' | 'image' | 'emoji';
   difficulty: 'easy' | 'medium' | 'hard';
-  locale?: 'en' | 'tr'; // varsayılan: 'en'
 }
 ```
 
@@ -185,18 +222,22 @@ interface CustomQuestion {
 
 #### `generate(): CaptchaChallenge`
 
-Benzersiz nonce, geçerlilik süresi ve hash'lenmiş cevap içeren yeni bir CAPTCHA doğrulaması oluşturur.
+İstemciye gönderilmesi güvenli bir **public** nesne döndürür — `answer`, `hashedAnswer` ve `salt` çıkarılarak `nonce` ile anahtarlanmış şekilde sunucu tarafında saklanır.
 
 ```typescript
 const challenge = captcha.generate();
-console.log(challenge.question); // kullanıcıya gösterilecek soru
-console.log(challenge.nonce); // benzersiz oturum tanımlayıcısı
-console.log(challenge.expiry); // doğrulamanın geçerlilik süresi sona erme zamanı
+console.log(challenge.question);  // kullanıcıya gösterilecek soru
+console.log(challenge.nonce);     // benzersiz oturum tanımlayıcısı (validate'e geri gönderilir)
+console.log(challenge.expiry);    // Unix ms cinsinden geçerlilik bitiş zamanı
+console.log(challenge.image);     // base64 SVG data URI (yalnızca type: 'image' için)
+console.log(challenge.emojis);    // emoji dizisi (yalnızca type: 'emoji' için)
+console.log(challenge.category);  // kategori adı (yalnızca type: 'emoji' için)
+// challenge.answer / .hashedAnswer / .salt — MEVCUT DEĞİL; istemciye hiç gönderilmez
 ```
 
 #### `validate(challenge: CaptchaChallenge, userInput: string): boolean`
 
-Kullanıcı girdisini doğrulama ile karşılaştırır. Doğruysa `true`, yanlışsa `false` değeri döndürür.
+Kullanıcı girdisini `challenge.nonce` üzerinden bulunan sunucu taraflı kayıtla karşılaştırır. Doğruysa `true`, yanlışsa `false` döndürür. Public challenge nesnesindeki `hashedAnswer` veya `salt` değiştirme girişimlerinin hiçbir etkisi yoktur.
 
 ```typescript
 const isValid = captcha.validate(challenge, userAnswer);
@@ -213,7 +254,6 @@ bun run src/test.ts
 Testler şunları içerir:
 - Tüm CAPTCHA türleri için doğru/yanlış/uç durum girdileri
 - Özel soru doğrulama senaryoları
-- Dil değiştirme işlemleri
 - Çok adımlı doğrulamalar
 - Girdi sanitizasyonu
 - Güvenlik doğrulamaları

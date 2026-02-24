@@ -13,16 +13,13 @@ export class SequenceGenerator {
     }
     if (difficulty === 'medium') {
       const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-      const buffer = randomBytes(4);
-      const start = buffer.readUInt32LE(0) % 4;
       const step = 2;
+      // max start ensures all 4 elements (start, +2, +4, +6) fit within the 10-letter array
+      const maxStart = letters.length - step * 3 - 1;
+      const buffer = randomBytes(4);
+      const start = buffer.readUInt32LE(0) % (maxStart + 1);
       const sequence = [letters[start], letters[start + step], letters[start + 2 * step]];
-      const nextIndex = start + 3 * step;
-      // check if next letter goes out of bounds
-      if (nextIndex >= letters.length) {
-        return { question: `${sequence.join(', ')}, ?`, answer: '?' };
-      }
-      const answer = letters[nextIndex]!;
+      const answer = letters[start + 3 * step]!;
       return { question: `${sequence.join(', ')}, ?`, answer };
     }
     // hard mode uses fibonacci sequence

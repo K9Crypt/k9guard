@@ -1,7 +1,6 @@
 export interface K9GuardOptions {
-  type: 'math' | 'text' | 'riddle' | 'sequence' | 'scramble' | 'logic' | 'reverse' | 'mixed' | 'multi';
+  type: 'math' | 'text' | 'sequence' | 'scramble' | 'reverse' | 'mixed' | 'multi' | 'image' | 'emoji';
   difficulty: 'easy' | 'medium' | 'hard';
-  locale?: 'en' | 'tr';
 }
 
 export interface CustomQuestion {
@@ -15,58 +14,71 @@ export interface K9GuardCustomOptions {
   questions: CustomQuestion[];
 }
 
-export interface CaptchaChallenge {
-  type: 'math' | 'text' | 'riddle' | 'sequence' | 'scramble' | 'logic' | 'reverse' | 'mixed' | 'multi' | 'custom';
+// Internal: full challenge record kept server-side only.
+// answer, hashedAnswer and salt must never leave the server.
+export interface StoredChallenge {
+  type: 'math' | 'text' | 'sequence' | 'scramble' | 'reverse' | 'mixed' | 'multi' | 'custom' | 'image' | 'emoji';
   question: string;
   answer: string | number;
   nonce: string;
   expiry: number;
   hashedAnswer: string;
   salt: string;
+  steps?: StoredChallenge[];
+  image?: string;
+  emojis?: string[];
+  category?: string;
+}
+
+// Public: safe subset sent to the client.
+// answer, hashedAnswer and salt are intentionally omitted to prevent
+// hash-injection attacks where an attacker forges hashedAnswer on the client.
+export interface CaptchaChallenge {
+  type: StoredChallenge['type'];
+  question: string;
+  nonce: string;
+  expiry: number;
   steps?: CaptchaChallenge[];
+  image?: string;
+  emojis?: string[];
+  category?: string;
+}
+
+export interface ImageCaptcha extends CaptchaChallenge {
+  type: 'image';
+  image: string;
 }
 
 export interface MathCaptcha extends CaptchaChallenge {
   type: 'math';
-  answer: number;
 }
 
 export interface TextCaptcha extends CaptchaChallenge {
   type: 'text';
-  answer: string;
-}
-
-export interface RiddleCaptcha extends CaptchaChallenge {
-  type: 'riddle';
-  answer: string;
 }
 
 export interface SequenceCaptcha extends CaptchaChallenge {
   type: 'sequence';
-  answer: string | number;
 }
 
 export interface ScrambleCaptcha extends CaptchaChallenge {
   type: 'scramble';
-  answer: string;
-}
-
-export interface LogicCaptcha extends CaptchaChallenge {
-  type: 'logic';
-  answer: string;
 }
 
 export interface ReverseCaptcha extends CaptchaChallenge {
   type: 'reverse';
-  answer: string;
 }
 
 export interface MixedCaptcha extends CaptchaChallenge {
   type: 'mixed';
-  answer: string | number;
 }
 
 export interface CustomCaptcha extends CaptchaChallenge {
   type: 'custom';
-  answer: string;
+}
+
+export interface EmojiCaptcha extends CaptchaChallenge {
+  type: 'emoji';
+  emojis: string[];
+  category: string;
 }
