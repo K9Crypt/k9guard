@@ -11,7 +11,9 @@ TypeScript/JavaScript projeleri için kriptografik güvenlik sunan güvenli, haf
 - **Kriptografik Güvenlik**: NIST SP 800-90A standardına uyumluluk sağlanmıştır
 - **10 CAPTCHA Türü**: Matematik, metin, dizi, karıştırma, ters çevirme, karma, çok adımlı, görsel, emoji ve özel doğrulama yöntemleri
 - **Güvenlik Odaklı**: SHA-256 tuzlu hash algoritması, sunucu taraflı challenge deposu, nonce tabanlı oturum yönetimi ve 5 dakikalık geçerlilik süresi
-- **Girdi Doğrulama**: Enjeksiyon saldırılarını önlemek için uzunluk sınırlamaları, tip kontrolü ve sanitizasyon
+- **Tek Kullanımlık Challenge**: Her nonce, `validate()` çağrısında — doğru ya da yanlış fark etmeksizin — tüketilir; replay ve brute-force saldırıları engellenir
+- **Katı Yapılandırma**: Geçersiz `type` veya `difficulty` değerleri anında hata fırlatır; sessiz fallback yoktur
+- **Girdi Doğrulama**: Enjeksiyon saldırılarını önlemek için uzunluk sınırlamaları, katı sayısal ayrıştırma, tip kontrolü ve sanitizasyon
 - **Özel Sorular**: Doğrulama ve sanitizasyon ile kendi sorularınızı tanımlama desteği
 - **Sıfır Bağımlılık**: Harici bağımlılık gerektirmeyen hafif yapı
 - **Kapsamlı Test Edilmiş**: Uç durumlar ve güvenlik senaryoları dahil olmak üzere geniş test kapsama alanı
@@ -194,6 +196,8 @@ const isValid = captcha.validate(challenge, "ankara");
 
 ### Yapıcı Metod Seçenekleri
 
+`type` ve `difficulty` alanları **zorunludur** ve katı şekilde doğrulanır. Geçersiz bir değer iletildiğinde constructor anında hata fırlatır.
+
 #### Standart CAPTCHA Seçenekleri
 
 ```typescript
@@ -239,8 +243,16 @@ console.log(challenge.category);  // kategori adı (yalnızca type: 'emoji' içi
 
 Kullanıcı girdisini `challenge.nonce` üzerinden bulunan sunucu taraflı kayıtla karşılaştırır. Doğruysa `true`, yanlışsa `false` döndürür. Public challenge nesnesindeki `hashedAnswer` veya `salt` değiştirme girişimlerinin hiçbir etkisi yoktur.
 
+> **⚠️ Tek kullanımlık semantik:** `validate()`, **ilk çağrıda** — cevap doğru ya da yanlış olsun fark etmeksizin — nonce'u tüketir. Her doğrulama denemesinden sonra challenge geçersiz hale gelir. Kullanıcıya yeni bir challenge sunmadan önce mutlaka `generate()` yeniden çağrılmalıdır.
+
 ```typescript
 const isValid = captcha.validate(challenge, userAnswer);
+
+// validate() çağrısından sonra challenge tüketilir.
+// Yeniden deneme için yeni bir challenge üretilmeli:
+if (!isValid) {
+  const newChallenge = captcha.generate();
+}
 ```
 
 ## Katkıda Bulunma

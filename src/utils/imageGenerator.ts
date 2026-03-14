@@ -1,5 +1,4 @@
 import { RandomPool } from './crypto';
-import { Buffer } from 'node:buffer';
 
 interface ImageGeneratorResult {
   image: string;
@@ -128,7 +127,10 @@ function buildSvg(pool: RandomPool, text: string, difficulty: 'easy' | 'medium' 
 }
 
 function svgToDataUri(svg: string): string {
-  return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf-8').toString('base64')}`;
+  // btoa requires a binary string; TextEncoder gives us the UTF-8 bytes
+  const bytes = new TextEncoder().encode(svg);
+  const binString = Array.from(bytes, b => String.fromCodePoint(b)).join('');
+  return `data:image/svg+xml;base64,${btoa(binString)}`;
 }
 
 export class ImageGenerator {

@@ -3,8 +3,8 @@ import { randomBytes } from './crypto';
 export class Random {
   static getRandomNumber(difficulty: 'easy' | 'medium' | 'hard'): number {
     const buffer = randomBytes(4);
-    // NOTE: convert crypto bytes to a number between 0 and 1
-    const rand = buffer.readUInt32LE(0) / 0xFFFFFFFF;
+    // divide by 2^32 (not 2^32-1) so the result is strictly in [0, 1) — avoids off-by-one at the top
+    const rand = buffer.readUInt32LE(0) / 0x100000000;
     if (difficulty === 'easy') {
       return Math.floor(rand * 10) + 1;
     }

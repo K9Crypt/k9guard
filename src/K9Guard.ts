@@ -7,7 +7,7 @@ export class K9Guard {
   private options: K9GuardOptions | K9GuardCustomOptions;
   private generator: CaptchaGenerator;
 
-  constructor(options: K9GuardOptions | K9GuardCustomOptions | { type: 'custom'; questions: CustomQuestion[] } = { type: 'math', difficulty: 'medium' }) {
+  constructor(options: K9GuardOptions | K9GuardCustomOptions | { type: 'custom'; questions: CustomQuestion[] }) {
     const processedOptions = this.processOptions(options);
     this.generator = new CaptchaGenerator(processedOptions);
     this.options = processedOptions;
@@ -15,7 +15,7 @@ export class K9Guard {
 
   private processOptions(options: unknown): K9GuardOptions | K9GuardCustomOptions {
     if (typeof options !== 'object' || options === null) {
-      return { type: 'math', difficulty: 'medium' };
+      throw new Error('Options must be an object');
     }
 
     const opt = options as Record<string, unknown>;
@@ -36,12 +36,19 @@ export class K9Guard {
       } as K9GuardCustomOptions;
     }
 
-    const validTypes = ['math', 'text', 'sequence', 'scramble', 'reverse', 'mixed', 'multi', 'image', 'emoji'];
-    const type = validTypes.includes(opt.type as string) ? opt.type : 'math';
+    const validTypes = ['math', 'text', 'sequence', 'scramble', 'reverse', 'mixed', 'multi', 'image', 'emoji'] as const;
+    if (!validTypes.includes(opt.type as any)) {
+      throw new Error(`Invalid type. Must be one of: ${validTypes.join(', ')}`);
+    }
+
+    const validDifficulties = ['easy', 'medium', 'hard'] as const;
+    if (!validDifficulties.includes(opt.difficulty as any)) {
+      throw new Error(`Invalid difficulty. Must be one of: ${validDifficulties.join(', ')}`);
+    }
 
     return {
-      type,
-      difficulty: opt.difficulty || 'medium'
+      type: opt.type,
+      difficulty: opt.difficulty
     } as K9GuardOptions;
   }
 
@@ -58,16 +65,15 @@ export class K9Guard {
       return false;
     }
 
-    // resolve the stored record by nonce; reject if not found or expired.
+    // consume() atomically removes the nonce from the store — single-use semantics.
     // hashedAnswer and salt come from the server-side store, never from the client,
-    // which prevents hash-injection attacks.
-    const stored = this.generator.lookup(challenge.nonce);
+    // which prevents hash-injection and replay attacks.
+    const stored = this.generator.consume(challenge.nonce);
     if (!stored) {
       return false;
     }
 
-    const now = Date.now();
-    if (now > stored.expiry) {
+    if (Date.now() > stored.expiry) {
       return false;
     }
 

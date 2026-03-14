@@ -52,20 +52,40 @@ export class CaptchaGenerator {
     return this.standardOptions.difficulty;
   }
 
-  // Look up the internal StoredChallenge by nonce for use during validation.
-  lookup(nonce: string): StoredChallenge | undefined {
-    return this.store.get(nonce);
+  // Atomically fetches and removes the stored challenge by nonce.
+  // Single-use semantics: the challenge is invalidated on the first attempt (success or failure).
+  // Callers must re-generate a new challenge after any validation attempt.
+  consume(nonce: string): StoredChallenge | undefined {
+    const record = this.store.get(nonce);
+    if (record !== undefined) {
+      this.store.delete(nonce);
+    }
+    return record;
+  }
+
+  // Removes all entries whose expiry has passed to free memory proactively.
+  // Called on every generate() to prevent the store from filling with stale records.
+  private pruneExpired(): void {
+    const now = Date.now();
+    for (const [key, record] of this.store) {
+      if (now > record.expiry) {
+        this.store.delete(key);
+      }
+    }
   }
 
   // Stores the full record server-side; returns a public CaptchaChallenge
   // that is safe to send to the client (no answer, hashedAnswer or salt).
   private createChallenge(base: Omit<StoredChallenge, 'nonce' | 'expiry' | 'hashedAnswer' | 'salt'>): CaptchaChallenge {
+    // prune stale entries first so expired records do not displace valid active ones
+    this.pruneExpired();
+
     let nonce: string;
     do {
       nonce = Random.generateNonce();
     } while (this.store.has(nonce));
 
-    // evict oldest entry before inserting to cap memory at NONCE_STORE_MAX
+    // hard cap: if still full after pruning, evict the oldest entry
     if (this.store.size >= NONCE_STORE_MAX) {
       const oldest = this.store.keys().next().value;
       if (oldest !== undefined) {
@@ -75,15 +95,25 @@ export class CaptchaGenerator {
 
     const expiry = Date.now() + 5 * 60 * 1000;
     const salt = Random.generateSalt();
-    // answer is never sent to the client; only its salted hash is stored
-    const hashedAnswer = createHash('sha256').update(base.answer.toString() + salt).digest('hex');
+    // canonical string for numeric answers: integers as-is, floats at fixed 2 decimal places
+    const answerStr = typeof base.answer === 'number'
+      ? (Number.isInteger(base.answer) ? base.answer.toString() : base.answer.toFixed(2))
+      : base.answer.toString();
+    const hashedAnswer = createHash('sha256').update(answerStr + salt).digest('hex');
 
     const stored: StoredChallenge = { ...base, nonce, expiry, hashedAnswer, salt };
     this.store.set(nonce, stored);
 
-    // strip sensitive fields before returning to caller
-    const { answer: _answer, hashedAnswer: _ha, salt: _salt, ...publicChallenge } = stored;
-    return publicChallenge as CaptchaChallenge;
+    // strip sensitive fields before returning to caller; also sanitize nested steps
+    const { answer: _answer, hashedAnswer: _ha, salt: _salt, steps: rawSteps, ...rest } = stored;
+    const publicChallenge: CaptchaChallenge = { ...rest };
+
+    if (rawSteps && rawSteps.length > 0) {
+      // steps are StoredChallenge objects; only public fields must reach the client
+      publicChallenge.steps = rawSteps.map(({ answer: _a, hashedAnswer: _h, salt: _s, steps: _nested, ...pub }) => pub as CaptchaChallenge);
+    }
+
+    return publicChallenge;
   }
 
   // evaluate arithmetic expression for the math captcha type
@@ -101,8 +131,9 @@ export class CaptchaGenerator {
       if (b === 0) {
         return Number.NaN;
       }
-      // round to 2 decimals to avoid floating point representation issues
-      return Math.round((a / b) * 100) / 100;
+      const raw = a / b;
+      // use parseFloat(toFixed(2)) so the stored value is the same canonical string the validator will see
+      return parseFloat(raw.toFixed(2));
     }
     return 0;
   }
@@ -260,17 +291,60 @@ export class CaptchaGenerator {
     return this.createChallenge({ type: 'mixed', question, answer }) as MixedCaptcha;
   }
 
-  // two-step captcha: math + scramble, both must be solved correctly
+  // two-step captcha: math + scramble, both must be solved correctly.
+  // Child challenges are built via the same salt/hash pipeline but are NOT inserted into the
+  // nonce store independently, so they cannot be validated as standalone challenges.
   private generateMulti(): CaptchaChallenge {
-    const step1 = this.store.get(this.generateMath().nonce)!;
-    const step2 = this.store.get(this.generateScramble().nonce)!;
+    const mathRaw = this.buildMathRecord();
+    const scrambleRaw = this.buildScrambleRecord();
 
     return this.createChallenge({
       type: 'multi',
       question: 'Complete two steps',
       answer: '',
-      steps: [step1, step2]
+      steps: [mathRaw, scrambleRaw]
     });
+  }
+
+  // Builds a StoredChallenge for a math question WITHOUT registering it in the nonce store.
+  private buildMathRecord(): StoredChallenge {
+    const difficulty = this.getDifficulty();
+    let num1 = Random.getRandomNumber(difficulty);
+    let num2 = Random.getRandomNumber(difficulty);
+    const operator = Random.getRandomOperator();
+
+    if (operator === '/' && num2 === 0) {
+      num2 = Random.getRandomNumber(difficulty) + 1;
+    }
+
+    let answer = this.calculateMath(num1, operator, num2);
+
+    if (isNaN(answer) || !isFinite(answer)) {
+      num1 = Random.getRandomNumber(difficulty);
+      num2 = Random.getRandomNumber(difficulty) + 1;
+      answer = num1 + num2;
+    }
+
+    return this.buildStoredRecord({ type: 'math', question: `${num1} ${operator} ${num2}`, answer });
+  }
+
+  // Builds a StoredChallenge for a scramble question WITHOUT registering it in the nonce store.
+  private buildScrambleRecord(): StoredChallenge {
+    const scr = ScrambleGenerator.generate(this.getDifficulty());
+    return this.buildStoredRecord({ type: 'scramble', question: scr.question, answer: scr.answer });
+  }
+
+  // Hashes and packages a challenge record but does NOT add it to the nonce store.
+  // Used for child steps that must not be independently redeemable.
+  private buildStoredRecord(base: Omit<StoredChallenge, 'nonce' | 'expiry' | 'hashedAnswer' | 'salt'>): StoredChallenge {
+    const nonce = Random.generateNonce();
+    const expiry = Date.now() + 5 * 60 * 1000;
+    const salt = Random.generateSalt();
+    const answerStr = typeof base.answer === 'number'
+      ? (Number.isInteger(base.answer) ? base.answer.toString() : base.answer.toFixed(2))
+      : base.answer.toString();
+    const hashedAnswer = createHash('sha256').update(answerStr + salt).digest('hex');
+    return { ...base, nonce, expiry, hashedAnswer, salt };
   }
 
   // generates an SVG-based visual CAPTCHA immune to trivial OCR attacks

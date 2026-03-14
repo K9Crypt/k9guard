@@ -1,6 +1,6 @@
 {
   "name": "k9guard",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript projects with cryptographic security and multi-language support",
   "main": "index.ts",
   "type": "module",

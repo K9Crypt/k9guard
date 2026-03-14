@@ -1,6 +1,14 @@
-import { createHash } from '../utils/crypto';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from '../utils/crypto';
 import type { StoredChallenge } from '../types';
+
+// decodes a hex string to raw bytes without relying on Buffer
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
 
 export class CaptchaValidator {
   private static readonly MAX_INPUT_LENGTH = 1000;
@@ -88,14 +96,22 @@ export class CaptchaValidator {
   }
 
   private static validateNumeric(challenge: StoredChallenge, userInput: string): boolean {
-    const inputNum = parseFloat(userInput);
+    // strict: only an optional minus, digits, and an optional single decimal point
+    // rejects scientific notation, leading zeros, and partial-parse tricks like "10abc"
+    if (!/^-?(\d+(\.\d+)?|\.\d+)$/.test(userInput.trim())) {
+      return false;
+    }
 
-    // make sure we got a valid number, not NaN or Infinity
+    const inputNum = parseFloat(userInput.trim());
+
     if (isNaN(inputNum) || !isFinite(inputNum)) {
       return false;
     }
 
-    return this.verifyAnswer(challenge, inputNum.toString());
+    // normalize to the same canonical form used at generation time (2 decimal places for floats)
+    const canonical = Number.isInteger(inputNum) ? inputNum.toString() : inputNum.toFixed(2);
+
+    return this.verifyAnswer(challenge, canonical);
   }
 
   private static validateText(challenge: StoredChallenge, userInput: string): boolean {
@@ -115,15 +131,15 @@ export class CaptchaValidator {
       .update(userInput + challenge.salt)
       .digest('hex');
 
-    // both buffers must be the same length for timingSafeEqual; hex-encoded
-    // SHA-256 is always 64 chars so this holds unless hashedAnswer is corrupted
+    // both hex strings must be equal length before byte comparison;
+    // SHA-256 hex is always 64 chars so this only fails on corruption
     if (userHash.length !== challenge.hashedAnswer.length) {
       return false;
     }
 
     return timingSafeEqual(
-      Buffer.from(userHash, 'hex'),
-      Buffer.from(challenge.hashedAnswer, 'hex')
+      hexToBytes(userHash),
+      hexToBytes(challenge.hashedAnswer)
     );
   }
 

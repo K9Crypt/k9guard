@@ -11,7 +11,9 @@ A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript pro
 - **Cryptographically Secure**: NIST SP 800-90A compliant random generation
 - **10 CAPTCHA Types**: Math, text, sequence, scramble, reverse, mixed, multi-step, image, emoji, and custom challenges
 - **Security First**: SHA-256 salted hashing, server-side challenge store, nonce-based session management, and 5-minute expiry
-- **Input Validation**: Length limits, type checking, and sanitization to prevent injection attacks
+- **Single-Use Challenges**: Every nonce is consumed on the first `validate()` call — success or failure — preventing replay and brute-force attacks
+- **Strict Configuration**: Invalid `type` or `difficulty` values throw immediately; no silent fallbacks
+- **Input Validation**: Length limits, strict numeric parsing, type checking, and sanitization to prevent injection attacks
 - **Custom Questions**: Support for your own questions with validation and sanitization
 - **Zero Dependencies**: Lightweight with no external dependencies
 - **Well Tested**: Comprehensive test coverage including edge cases and security scenarios
@@ -194,6 +196,8 @@ const isValid = captcha.validate(challenge, "paris");
 
 ### Constructor Options
 
+Both `type` and `difficulty` are **required** and strictly validated. Passing an invalid value throws an error immediately.
+
 #### Standard CAPTCHA Options
 
 ```typescript
@@ -239,8 +243,16 @@ console.log(challenge.category);  // category name (only for type: 'emoji')
 
 Validates user input against the stored server-side record (looked up by `challenge.nonce`). Returns `true` if correct, `false` otherwise. Tampered `hashedAnswer` or `salt` on the public challenge object have no effect.
 
+> **⚠️ Single-use semantics:** `validate()` consumes the nonce on the **first call**, regardless of whether the answer is correct or not. After any validation attempt, the challenge is invalidated. Always call `generate()` again before presenting a new challenge to the user.
+
 ```typescript
 const isValid = captcha.validate(challenge, userAnswer);
+
+// After validate(), the challenge is consumed.
+// For a retry, generate a fresh challenge:
+if (!isValid) {
+  const newChallenge = captcha.generate();
+}
 ```
 
 ## Contributing
