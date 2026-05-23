@@ -1,4 +1,5 @@
 import { randomBytes } from './crypto';
+import type { Difficulty } from '../types';
 
 export interface EmojiGeneratorResult {
   emojis: string[];
@@ -45,7 +46,7 @@ function shuffleInPlace(arr: string[]): void {
 }
 
 export class EmojiGenerator {
-  static generate(difficulty: 'easy' | 'medium' | 'hard'): EmojiGeneratorResult {
+  static generate(difficulty: Difficulty): EmojiGeneratorResult {
     const targetCount     = difficulty === 'easy' ? 2 : difficulty === 'medium' ? 3 : 4;
     const distractorCount = difficulty === 'easy' ? 2 : difficulty === 'medium' ? 3 : 4;
     const totalCount      = targetCount + distractorCount;

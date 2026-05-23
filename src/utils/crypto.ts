@@ -187,12 +187,12 @@ export class RandomPool {
   constructor(chunkSize = 2048) {
     this.chunkSize = chunkSize;
     this.buffer = new Uint8Array(chunkSize);
-    globalThis.crypto.getRandomValues(this.buffer);
+    globalThis.crypto.getRandomValues(this.buffer as Uint8Array<ArrayBuffer>);
     this.offset = 0;
   }
 
   private refill(): void {
-    globalThis.crypto.getRandomValues(this.buffer);
+    globalThis.crypto.getRandomValues(this.buffer as Uint8Array<ArrayBuffer>);
     this.offset = 0;
   }
 

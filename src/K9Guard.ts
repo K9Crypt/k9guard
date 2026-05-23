@@ -1,16 +1,36 @@
-import type { K9GuardOptions, K9GuardCustomOptions, CaptchaChallenge, CustomQuestion } from './types';
+import type { K9GuardOptions, K9GuardCustomOptions, CaptchaChallenge, CustomQuestion, Difficulty } from './types';
 import { CaptchaGenerator } from './core/captchaGenerator';
 import { CaptchaValidator } from './core/captchaValidator';
+import { AdaptiveTracker } from './core/adaptiveTracker';
 import { CustomQuestionValidator } from './validators/customQuestionValidator';
 
 export class K9Guard {
   private options: K9GuardOptions | K9GuardCustomOptions;
   private generator: CaptchaGenerator;
+  private adaptiveTracker: AdaptiveTracker | null = null;
+  private defaultSessionId: string | null = null;
 
-  constructor(options: K9GuardOptions | K9GuardCustomOptions | { type: 'custom'; questions: CustomQuestion[] }) {
+  constructor(options: K9GuardOptions | K9GuardCustomOptions | { type: 'custom'; questions: CustomQuestion[]; sessionId?: string }) {
     const processedOptions = this.processOptions(options);
     this.generator = new CaptchaGenerator(processedOptions);
     this.options = processedOptions;
+
+    if (this.isAdaptive()) {
+      this.adaptiveTracker = new AdaptiveTracker();
+      this.defaultSessionId = (options as Record<string, unknown>).sessionId as string | null ?? null;
+    }
+  }
+
+  private isAdaptive(): boolean {
+    return 'difficulty' in this.options && this.options.difficulty === 'adaptive';
+  }
+
+  private resolveSessionId(sessionId?: string): string {
+    const id = sessionId ?? this.defaultSessionId;
+    if (!id) {
+      throw new Error('sessionId is required for adaptive difficulty. Provide it in constructor or as parameter.');
+    }
+    return id;
   }
 
   private processOptions(options: unknown): K9GuardOptions | K9GuardCustomOptions {
@@ -32,7 +52,8 @@ export class K9Guard {
 
       return {
         type: 'custom',
-        questions: CustomQuestionValidator.sanitize(opt.questions as CustomQuestion[])
+        questions: CustomQuestionValidator.sanitize(opt.questions as CustomQuestion[]),
+        sessionId: opt.sessionId,
       } as K9GuardCustomOptions;
     }
 
@@ -41,22 +62,29 @@ export class K9Guard {
       throw new Error(`Invalid type. Must be one of: ${validTypes.join(', ')}`);
     }
 
-    const validDifficulties = ['easy', 'medium', 'hard'] as const;
+    const validDifficulties = ['easy', 'medium', 'hard', 'adaptive'] as const;
     if (!validDifficulties.includes(opt.difficulty as any)) {
       throw new Error(`Invalid difficulty. Must be one of: ${validDifficulties.join(', ')}`);
     }
 
     return {
       type: opt.type,
-      difficulty: opt.difficulty
+      difficulty: opt.difficulty,
+      sessionId: opt.sessionId,
     } as K9GuardOptions;
   }
 
-  generate(): CaptchaChallenge {
-    return this.generator.generate();
+  generate(sessionId?: string): CaptchaChallenge {
+    if (!this.isAdaptive()) {
+      return this.generator.generate();
+    }
+
+    const id = this.resolveSessionId(sessionId);
+    const difficulty = this.adaptiveTracker!.getDifficulty(id);
+    return this.generator.generate(difficulty);
   }
 
-  validate(challenge: CaptchaChallenge, userInput: string): boolean {
+  validate(challenge: CaptchaChallenge, userInput: string, sessionId?: string): boolean {
     if (!this.isValidChallenge(challenge)) {
       return false;
     }
@@ -77,7 +105,32 @@ export class K9Guard {
       return false;
     }
 
-    return CaptchaValidator.validate(stored, userInput);
+    const isValid = CaptchaValidator.validate(stored, userInput);
+
+    if (this.isAdaptive()) {
+      const id = this.resolveSessionId(sessionId);
+      this.adaptiveTracker!.recordAttempt(id, isValid);
+    }
+
+    return isValid;
+  }
+
+  clearSession(sessionId: string): boolean {
+    if (!this.adaptiveTracker) {
+      return false;
+    }
+    return this.adaptiveTracker.clearSession(sessionId);
+  }
+
+  clearAllSessions(): void {
+    this.adaptiveTracker?.clearAll();
+  }
+
+  getSessionDifficulty(sessionId: string): Difficulty | null {
+    if (!this.adaptiveTracker) {
+      return null;
+    }
+    return this.adaptiveTracker.getDifficulty(sessionId);
   }
 
   private isValidChallenge(challenge: unknown): boolean {

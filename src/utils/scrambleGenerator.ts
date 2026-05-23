@@ -1,4 +1,5 @@
 import { randomBytes } from './crypto';
+import type { Difficulty } from '../types';
 
 export class ScrambleGenerator {
   private static readonly easyWords: string[] = [
@@ -17,7 +18,7 @@ export class ScrambleGenerator {
     'infrastructure', 'authentication', 'authorization', 'vulnerability', 'orchestration'
   ];
 
-  static generate(difficulty: 'easy' | 'medium' | 'hard'): { question: string; answer: string } {
+  static generate(difficulty: Difficulty): { question: string; answer: string } {
     let pool: string[];
     if (difficulty === 'easy') {
       pool = this.easyWords;

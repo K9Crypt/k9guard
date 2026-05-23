@@ -1,4 +1,5 @@
 import { RandomPool } from './crypto';
+import type { Difficulty } from '../types';
 
 interface ImageGeneratorResult {
   image: string;
@@ -99,7 +100,7 @@ function renderWavePath(pool: RandomPool): string {
   return `<path d="${d}" stroke="${strokeColor}" stroke-width="1.5" fill="none" opacity="0.35"/>`;
 }
 
-function buildSvg(pool: RandomPool, text: string, difficulty: 'easy' | 'medium' | 'hard'): string {
+function buildSvg(pool: RandomPool, text: string, difficulty: Difficulty): string {
   const charCount = text.length;
   const spacing   = SVG_WIDTH / (charCount + 1);
   const baseY     = SVG_HEIGHT / 2 + 8;
@@ -134,7 +135,7 @@ function svgToDataUri(svg: string): string {
 }
 
 export class ImageGenerator {
-  static generate(difficulty: 'easy' | 'medium' | 'hard'): ImageGeneratorResult {
+  static generate(difficulty: Difficulty): ImageGeneratorResult {
     // single pool allocation covers all random needs for this image — ~1 crypto
     // call instead of the ~500 individual randomBytes(4) calls it replaced
     const pool = new RandomPool(2048);

@@ -1,5 +1,5 @@
 import { randomBytes } from './crypto';
-import type { CustomQuestion } from '../types';
+import type { CustomQuestion, Difficulty } from '../types';
 
 export class CustomQuestionGenerator {
   private questions: CustomQuestion[];
@@ -8,7 +8,7 @@ export class CustomQuestionGenerator {
     this.questions = questions;
   }
 
-  generate(difficulty?: 'easy' | 'medium' | 'hard'): { question: string; answer: string } {
+  generate(difficulty?: Difficulty): { question: string; answer: string } {
     // filter questions by difficulty if specified
     const candidates = difficulty
       ? this.questions.filter(q => q.difficulty === difficulty)

@@ -7,7 +7,7 @@ import { CustomQuestionGenerator } from '../utils/customQuestionGenerator';
 import { CustomQuestionValidator } from '../validators/customQuestionValidator';
 import { ImageGenerator } from '../utils/imageGenerator';
 import { EmojiGenerator } from '../utils/emojiGenerator';
-import type { K9GuardOptions, K9GuardCustomOptions, CaptchaChallenge, StoredChallenge, MathCaptcha, TextCaptcha, SequenceCaptcha, ScrambleCaptcha, ReverseCaptcha, MixedCaptcha, CustomCaptcha, ImageCaptcha, EmojiCaptcha, CustomQuestion } from '../types';
+import type { K9GuardOptions, K9GuardCustomOptions, CaptchaChallenge, StoredChallenge, MathCaptcha, TextCaptcha, SequenceCaptcha, ScrambleCaptcha, ReverseCaptcha, MixedCaptcha, CustomCaptcha, ImageCaptcha, EmojiCaptcha, CustomQuestion, Difficulty } from '../types';
 
 // Bounded nonce store: evicts the oldest entry once capacity is reached to
 // prevent unbounded memory growth while still blocking same-process replays.
@@ -45,11 +45,14 @@ export class CaptchaGenerator {
     return opt.type === 'custom' && Array.isArray(opt.questions);
   }
 
-  private getDifficulty(): 'easy' | 'medium' | 'hard' {
+  private getDifficulty(override?: Difficulty): Difficulty {
+    if (override) {
+      return override;
+    }
     if (!this.standardOptions) {
       return 'easy';
     }
-    return this.standardOptions.difficulty;
+    return this.standardOptions.difficulty as Difficulty;
   }
 
   // Atomically fetches and removes the stored challenge by nonce.
@@ -139,7 +142,7 @@ export class CaptchaGenerator {
   }
 
   // dispatch to the correct generator based on configured captcha type
-  generate(): CaptchaChallenge {
+  generate(difficulty?: Difficulty): CaptchaChallenge {
     if (this.customOptions) {
       return this.generateCustom();
     }
@@ -151,30 +154,30 @@ export class CaptchaGenerator {
     const captchaType = this.standardOptions.type;
 
     if (captchaType === 'math') {
-      return this.generateMath();
+      return this.generateMath(difficulty);
     }
     if (captchaType === 'text') {
-      return this.generateText();
+      return this.generateText(difficulty);
     }
     if (captchaType === 'sequence') {
-      return this.generateSequence();
+      return this.generateSequence(difficulty);
     }
     if (captchaType === 'scramble') {
-      return this.generateScramble();
+      return this.generateScramble(difficulty);
     }
     if (captchaType === 'reverse') {
-      return this.generateReverse();
+      return this.generateReverse(difficulty);
     }
     if (captchaType === 'multi') {
-      return this.generateMulti();
+      return this.generateMulti(difficulty);
     }
     if (captchaType === 'image') {
-      return this.generateImage();
+      return this.generateImage(difficulty);
     }
     if (captchaType === 'emoji') {
-      return this.generateEmoji();
+      return this.generateEmoji(difficulty);
     }
-    return this.generateMixed();
+    return this.generateMixed(difficulty);
   }
 
   private generateCustom(): CustomCaptcha {
@@ -192,8 +195,8 @@ export class CaptchaGenerator {
     return this.createChallenge({ type: 'custom', question: custom.question, answer: custom.answer }) as CustomCaptcha;
   }
 
-  private generateMath(): MathCaptcha {
-    const difficulty = this.getDifficulty();
+  private generateMath(diffOverride?: Difficulty): MathCaptcha {
+    const difficulty = this.getDifficulty(diffOverride);
     let num1 = Random.getRandomNumber(difficulty);
     let num2 = Random.getRandomNumber(difficulty);
     const operator = Random.getRandomOperator();
@@ -221,28 +224,28 @@ export class CaptchaGenerator {
     return this.createChallenge({ type: 'math', question: `${num1} ${operator} ${num2}`, answer }) as MathCaptcha;
   }
 
-  private generateText(): TextCaptcha {
-    const text = Random.generateRandomString(this.getDifficulty());
+  private generateText(diffOverride?: Difficulty): TextCaptcha {
+    const text = Random.generateRandomString(this.getDifficulty(diffOverride));
     return this.createChallenge({ type: 'text', question: text, answer: text }) as TextCaptcha;
   }
 
-  private generateSequence(): SequenceCaptcha {
-    const seq = SequenceGenerator.generate(this.getDifficulty());
+  private generateSequence(diffOverride?: Difficulty): SequenceCaptcha {
+    const seq = SequenceGenerator.generate(this.getDifficulty(diffOverride));
     return this.createChallenge({ type: 'sequence', question: seq.question, answer: seq.answer }) as SequenceCaptcha;
   }
 
-  private generateScramble(): ScrambleCaptcha {
-    const scr = ScrambleGenerator.generate(this.getDifficulty());
+  private generateScramble(diffOverride?: Difficulty): ScrambleCaptcha {
+    const scr = ScrambleGenerator.generate(this.getDifficulty(diffOverride));
     return this.createChallenge({ type: 'scramble', question: scr.question, answer: scr.answer }) as ScrambleCaptcha;
   }
 
-  private generateReverse(): ReverseCaptcha {
-    const rev = ReverseGenerator.generate(this.getDifficulty());
+  private generateReverse(diffOverride?: Difficulty): ReverseCaptcha {
+    const rev = ReverseGenerator.generate(this.getDifficulty(diffOverride));
     return this.createChallenge({ type: 'reverse', question: rev.question, answer: rev.answer }) as ReverseCaptcha;
   }
 
   // randomly selects one of the available non-compound types
-  private generateMixed(): MixedCaptcha {
+  private generateMixed(diffOverride?: Difficulty): MixedCaptcha {
     const types = ['math', 'text', 'sequence', 'scramble', 'reverse'] as const;
     const buffer = randomBytes(1) as any;
     const randomType = types[buffer[0]! % types.length]!;
@@ -253,7 +256,7 @@ export class CaptchaGenerator {
     let answer: string | number;
 
     if (randomType === 'math') {
-      const difficulty = this.getDifficulty();
+      const difficulty = this.getDifficulty(diffOverride);
       let num1 = Random.getRandomNumber(difficulty);
       let num2 = Random.getRandomNumber(difficulty);
       const operator = Random.getRandomOperator();
@@ -271,19 +274,19 @@ export class CaptchaGenerator {
         answer = result;
       }
     } else if (randomType === 'text') {
-      const text = Random.generateRandomString(this.getDifficulty());
+      const text = Random.generateRandomString(this.getDifficulty(diffOverride));
       question = text;
       answer = text;
     } else if (randomType === 'sequence') {
-      const seq = SequenceGenerator.generate(this.getDifficulty());
+      const seq = SequenceGenerator.generate(this.getDifficulty(diffOverride));
       question = seq.question;
       answer = seq.answer;
     } else if (randomType === 'scramble') {
-      const scr = ScrambleGenerator.generate(this.getDifficulty());
+      const scr = ScrambleGenerator.generate(this.getDifficulty(diffOverride));
       question = scr.question;
       answer = scr.answer;
     } else {
-      const rev = ReverseGenerator.generate(this.getDifficulty());
+      const rev = ReverseGenerator.generate(this.getDifficulty(diffOverride));
       question = rev.question;
       answer = rev.answer;
     }
@@ -294,9 +297,9 @@ export class CaptchaGenerator {
   // two-step captcha: math + scramble, both must be solved correctly.
   // Child challenges are built via the same salt/hash pipeline but are NOT inserted into the
   // nonce store independently, so they cannot be validated as standalone challenges.
-  private generateMulti(): CaptchaChallenge {
-    const mathRaw = this.buildMathRecord();
-    const scrambleRaw = this.buildScrambleRecord();
+  private generateMulti(diffOverride?: Difficulty): CaptchaChallenge {
+    const mathRaw = this.buildMathRecord(diffOverride);
+    const scrambleRaw = this.buildScrambleRecord(diffOverride);
 
     return this.createChallenge({
       type: 'multi',
@@ -307,8 +310,8 @@ export class CaptchaGenerator {
   }
 
   // Builds a StoredChallenge for a math question WITHOUT registering it in the nonce store.
-  private buildMathRecord(): StoredChallenge {
-    const difficulty = this.getDifficulty();
+  private buildMathRecord(diffOverride?: Difficulty): StoredChallenge {
+    const difficulty = this.getDifficulty(diffOverride);
     let num1 = Random.getRandomNumber(difficulty);
     let num2 = Random.getRandomNumber(difficulty);
     const operator = Random.getRandomOperator();
@@ -329,8 +332,8 @@ export class CaptchaGenerator {
   }
 
   // Builds a StoredChallenge for a scramble question WITHOUT registering it in the nonce store.
-  private buildScrambleRecord(): StoredChallenge {
-    const scr = ScrambleGenerator.generate(this.getDifficulty());
+  private buildScrambleRecord(diffOverride?: Difficulty): StoredChallenge {
+    const scr = ScrambleGenerator.generate(this.getDifficulty(diffOverride));
     return this.buildStoredRecord({ type: 'scramble', question: scr.question, answer: scr.answer });
   }
 
@@ -348,8 +351,8 @@ export class CaptchaGenerator {
   }
 
   // generates an SVG-based visual CAPTCHA immune to trivial OCR attacks
-  private generateImage(): ImageCaptcha {
-    const result = ImageGenerator.generate(this.getDifficulty());
+  private generateImage(diffOverride?: Difficulty): ImageCaptcha {
+    const result = ImageGenerator.generate(this.getDifficulty(diffOverride));
     return this.createChallenge({
       type: 'image',
       question: result.question,
@@ -359,8 +362,8 @@ export class CaptchaGenerator {
   }
 
   // generates an emoji selection CAPTCHA: user picks all emojis from a given category
-  private generateEmoji(): EmojiCaptcha {
-    const result = EmojiGenerator.generate(this.getDifficulty());
+  private generateEmoji(diffOverride?: Difficulty): EmojiCaptcha {
+    const result = EmojiGenerator.generate(this.getDifficulty(diffOverride));
     return this.createChallenge({
       type: 'emoji',
       question: result.question,

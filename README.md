@@ -10,13 +10,14 @@ A secure, lightweight, and flexible CAPTCHA module for TypeScript/JavaScript pro
 
 - **Cryptographically Secure**: NIST SP 800-90A compliant random generation
 - **10 CAPTCHA Types**: Math, text, sequence, scramble, reverse, mixed, multi-step, image, emoji, and custom challenges
+- **Adaptive Difficulty**: Automatically adjusts challenge difficulty based on user success rate
 - **Security First**: SHA-256 salted hashing, server-side challenge store, nonce-based session management, and 5-minute expiry
 - **Single-Use Challenges**: Every nonce is consumed on the first `validate()` call — success or failure — preventing replay and brute-force attacks
 - **Strict Configuration**: Invalid `type` or `difficulty` values throw immediately; no silent fallbacks
 - **Input Validation**: Length limits, strict numeric parsing, type checking, and sanitization to prevent injection attacks
 - **Custom Questions**: Support for your own questions with validation and sanitization
 - **Zero Dependencies**: Lightweight with no external dependencies
-- **Well Tested**: Comprehensive test coverage including edge cases and security scenarios
+- **Well Tested**: 228+ tests covering unit, integration, security, edge-case, and benchmark scenarios
 - **OWASP Compliant**: Follows OWASP Top 10 security guidelines
 - **Privacy Compliant**: GDPR/KVKK compliant with no personal data storage
 
@@ -192,6 +193,101 @@ const challenge = captcha.generate();
 const isValid = captcha.validate(challenge, "paris");
 ```
 
+### Adaptive Difficulty
+
+Adaptive difficulty automatically adjusts the challenge difficulty based on the user's success rate. This provides a better user experience — easy challenges for struggling users and harder challenges for those who solve quickly.
+
+#### How It Works
+
+- Tracks the last 10 attempts per session (sliding window)
+- **80%+ success rate** — difficulty increases (easy -> medium -> hard)
+- **40% or lower success rate** — difficulty decreases (hard -> medium -> easy)
+- **40-80% success rate** — difficulty stays stable
+- Minimum 3 attempts required before any adjustment (hysteresis)
+- Sessions expire after 30 minutes of inactivity
+- Maximum 10,000 concurrent sessions (oldest evicted automatically)
+
+#### Option 1: Session ID in Constructor
+
+```typescript
+const captcha = new K9Guard({
+  type: 'math',
+  difficulty: 'adaptive',
+  sessionId: 'user-123'  // any unique string (user ID, session token, IP, etc.)
+});
+
+const challenge = captcha.generate();  // uses user-123's current difficulty
+const isValid = captcha.validate(challenge, userAnswer);  // records result automatically
+```
+
+#### Option 2: Session ID as Parameter
+
+```typescript
+const captcha = new K9Guard({ type: 'math', difficulty: 'adaptive' });
+
+// pass sessionId with each call
+const challenge = captcha.generate('user-123');
+const isValid = captcha.validate(challenge, userAnswer, 'user-123');
+```
+
+#### Option 3: Flexible (Both)
+
+Constructor `sessionId` is the default. Parameter `sessionId` overrides it.
+
+```typescript
+const captcha = new K9Guard({
+  type: 'math',
+  difficulty: 'adaptive',
+  sessionId: 'default-user'
+});
+
+captcha.generate();                // uses 'default-user'
+captcha.generate('other-user');    // uses 'other-user' (overrides default)
+```
+
+#### Session Management
+
+```typescript
+// get current difficulty for a session
+const difficulty = captcha.getSessionDifficulty('user-123'); // 'easy' | 'medium' | 'hard' | null
+
+// clear a specific session (resets to 'medium')
+captcha.clearSession('user-123');
+
+// clear all sessions
+captcha.clearAllSessions();
+```
+
+#### Works with All CAPTCHA Types
+
+```typescript
+// adaptive works with any captcha type
+const captcha = new K9Guard({ type: 'image', difficulty: 'adaptive', sessionId: 'user-1' });
+const captcha = new K9Guard({ type: 'emoji', difficulty: 'adaptive', sessionId: 'user-1' });
+const captcha = new K9Guard({ type: 'reverse', difficulty: 'adaptive', sessionId: 'user-1' });
+// ... and so on
+```
+
+#### Express.js Example
+
+```typescript
+import express from 'express';
+import K9Guard from 'k9guard';
+
+const app = express();
+const captcha = new K9Guard({ type: 'math', difficulty: 'adaptive' });
+
+app.get('/captcha', (req, res) => {
+  const challenge = captcha.generate(req.sessionID);
+  res.json(challenge);
+});
+
+app.post('/verify', (req, res) => {
+  const isValid = captcha.validate(req.body.challenge, req.body.answer, req.sessionID);
+  res.json({ valid: isValid });
+});
+```
+
 ## API Reference
 
 ### Constructor Options
@@ -203,7 +299,8 @@ Both `type` and `difficulty` are **required** and strictly validated. Passing an
 ```typescript
 interface K9GuardOptions {
   type: 'math' | 'text' | 'sequence' | 'scramble' | 'reverse' | 'mixed' | 'multi' | 'image' | 'emoji';
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: 'easy' | 'medium' | 'hard' | 'adaptive';
+  sessionId?: string;  // optional, required when difficulty is 'adaptive'
 }
 ```
 
@@ -213,6 +310,7 @@ interface K9GuardOptions {
 interface K9GuardCustomOptions {
   type: 'custom';
   questions: CustomQuestion[];
+  sessionId?: string;
 }
 
 interface CustomQuestion {
@@ -224,9 +322,11 @@ interface CustomQuestion {
 
 ### Methods
 
-#### `generate(): CaptchaChallenge`
+#### `generate(sessionId?: string): CaptchaChallenge`
 
 Generates a new CAPTCHA challenge. Returns a **public** object safe to send to the client — `answer`, `hashedAnswer` and `salt` are stripped and stored server-side, keyed by `nonce`.
+
+When `difficulty` is `'adaptive'`, the `sessionId` parameter is used to look up the user's current difficulty level. If a `sessionId` was provided in the constructor, it is used as the default.
 
 ```typescript
 const challenge = captcha.generate();
@@ -239,9 +339,11 @@ console.log(challenge.category);  // category name (only for type: 'emoji')
 // challenge.answer / .hashedAnswer / .salt — NOT present; never sent to client
 ```
 
-#### `validate(challenge: CaptchaChallenge, userInput: string): boolean`
+#### `validate(challenge: CaptchaChallenge, userInput: string, sessionId?: string): boolean`
 
 Validates user input against the stored server-side record (looked up by `challenge.nonce`). Returns `true` if correct, `false` otherwise. Tampered `hashedAnswer` or `salt` on the public challenge object have no effect.
+
+When `difficulty` is `'adaptive'`, the validation result is automatically recorded for the session and the difficulty is adjusted accordingly.
 
 > **⚠️ Single-use semantics:** `validate()` consumes the nonce on the **first call**, regardless of whether the answer is correct or not. After any validation attempt, the challenge is invalidated. Always call `generate()` again before presenting a new challenge to the user.
 
@@ -255,6 +357,95 @@ if (!isValid) {
 }
 ```
 
+#### `getSessionDifficulty(sessionId: string): Difficulty | null`
+
+Returns the current adaptive difficulty for a session. Returns `null` if the instance is not in adaptive mode.
+
+```typescript
+const difficulty = captcha.getSessionDifficulty('user-123');
+// 'easy' | 'medium' | 'hard' | null
+```
+
+#### `clearSession(sessionId: string): boolean`
+
+Removes a specific adaptive session. Returns `true` if the session existed, `false` otherwise.
+
+```typescript
+captcha.clearSession('user-123');
+```
+
+#### `clearAllSessions(): void`
+
+Removes all adaptive sessions.
+
+```typescript
+captcha.clearAllSessions();
+```
+
+### Exported Utilities
+
+```typescript
+import K9Guard, { AdaptiveTracker, CustomQuestionValidator, CustomQuestionGenerator } from 'k9guard';
+```
+
+| Export | Description |
+|--------|-------------|
+| `K9Guard` (default) | Main CAPTCHA class |
+| `AdaptiveTracker` | Standalone adaptive difficulty tracker (useful for custom integrations) |
+| `CustomQuestionValidator` | Validate and sanitize custom question arrays |
+| `CustomQuestionGenerator` | Generate from custom question pools |
+
+### Type Exports
+
+```typescript
+import type {
+  K9GuardOptions,
+  K9GuardCustomOptions,
+  CaptchaChallenge,
+  CustomQuestion,
+  Difficulty,
+  AdaptiveSession,
+  AdaptiveAttempt,
+  StoredChallenge,
+  ImageCaptcha,
+  MathCaptcha,
+  TextCaptcha,
+  SequenceCaptcha,
+  ScrambleCaptcha,
+  ReverseCaptcha,
+  MixedCaptcha,
+  CustomCaptcha,
+  EmojiCaptcha,
+} from 'k9guard';
+```
+
+## Testing
+
+K9Guard uses `bun:test` for its test suite with 228+ tests covering unit, integration, security, edge-case, and benchmark scenarios.
+
+### Run Tests
+
+```bash
+# run all tests
+bun test
+
+# run tests in watch mode
+bun run test:watch
+
+# run tests with coverage
+bun run test:coverage
+```
+
+### Test Categories
+
+| Category | Coverage |
+|----------|----------|
+| **Unit** | Each module tested independently with correct outputs and edge cases |
+| **Integration** | Full generate-validate flow for all 10 captcha types + adaptive mode |
+| **Security** | Timing attack resistance, nonce replay prevention, hash injection, input sanitization, SVG injection |
+| **Edge Cases** | Division by zero, unicode characters, concurrent generators, invalid inputs |
+| **Benchmark** | Performance assertions for all captcha types (generate < 5ms, validate < 5ms) |
+
 ## Contributing
 
 We welcome contributions! Here's how you can help:
@@ -262,7 +453,7 @@ We welcome contributions! Here's how you can help:
 1. **Fork the repository**
 2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
 3. **Add tests** for your changes
-4. **Run tests**: `bun run src/test.ts`
+4. **Run tests**: `bun test`
 5. **Commit your changes**: `git commit -m 'feat: add amazing feature'`
 6. **Push to branch**: `git push origin feature/amazing-feature`
 7. **Open a Pull Request**

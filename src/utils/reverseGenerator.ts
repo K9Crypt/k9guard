@@ -1,4 +1,5 @@
 import { randomBytes } from './crypto';
+import type { Difficulty } from '../types';
 
 export class ReverseGenerator {
   private static readonly easyWords = [
@@ -29,26 +30,22 @@ export class ReverseGenerator {
     'segmentation', 'fragmentation', 'concatenation', 'regeneration', 'degeneration'
   ];
 
-  static generate(difficulty: 'easy' | 'medium' | 'hard'): { question: string; answer: string } {
+  static generate(difficulty: Difficulty): { question: string; answer: string } {
     let wordPool: string[];
-    
-    if (difficulty === 'easy') {
-      wordPool = this.easyWords;
-    }
-    
-    if (difficulty === 'medium') {
-      wordPool = this.mediumWords;
-    }
-    
+
     if (difficulty === 'hard') {
       wordPool = this.hardWords;
+    } else if (difficulty === 'medium') {
+      wordPool = this.mediumWords;
+    } else {
+      wordPool = this.easyWords;
     }
-    
+
     const buf = randomBytes(4);
     const rand = buf.readUInt32LE(0) / 0xFFFFFFFF;
-    const text = wordPool![Math.floor(rand * wordPool!.length)]!;
+    const text = wordPool[Math.floor(rand * wordPool.length)]!;
     const reversed = text.split('').reverse().join('');
-    
+
     return { question: reversed, answer: text };
   }
 }

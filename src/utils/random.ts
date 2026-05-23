@@ -1,7 +1,8 @@
 import { randomBytes } from './crypto';
+import type { Difficulty } from '../types';
 
 export class Random {
-  static getRandomNumber(difficulty: 'easy' | 'medium' | 'hard'): number {
+  static getRandomNumber(difficulty: Difficulty): number {
     const buffer = randomBytes(4);
     // divide by 2^32 (not 2^32-1) so the result is strictly in [0, 1) — avoids off-by-one at the top
     const rand = buffer.readUInt32LE(0) / 0x100000000;
@@ -21,7 +22,7 @@ export class Random {
     return operators[index]!;
   }
 
-  static generateRandomString(difficulty: 'easy' | 'medium' | 'hard'): string {
+  static generateRandomString(difficulty: Difficulty): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
     const length = difficulty === 'easy' ? 4 : difficulty === 'medium' ? 6 : 8;

@@ -1,7 +1,8 @@
 import { randomBytes } from './crypto';
+import type { Difficulty } from '../types';
 
 export class SequenceGenerator {
-  static generate(difficulty: 'easy' | 'medium' | 'hard'): { question: string; answer: number | string } {
+  static generate(difficulty: Difficulty): { question: string; answer: number | string } {
     if (difficulty === 'easy') {
       const buffer = randomBytes(8);
       // use separate byte ranges for start and step to remove correlation between them

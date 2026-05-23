@@ -1,17 +1,33 @@
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
 export interface K9GuardOptions {
   type: 'math' | 'text' | 'sequence' | 'scramble' | 'reverse' | 'mixed' | 'multi' | 'image' | 'emoji';
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: Difficulty | 'adaptive';
+  sessionId?: string;
 }
 
 export interface CustomQuestion {
   question: string;
   answer: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: Difficulty;
 }
 
 export interface K9GuardCustomOptions {
   type: 'custom';
   questions: CustomQuestion[];
+  sessionId?: string;
+}
+
+export interface AdaptiveAttempt {
+  timestamp: number;
+  success: boolean;
+}
+
+export interface AdaptiveSession {
+  attempts: AdaptiveAttempt[];
+  currentDifficulty: Difficulty;
+  lastAdjustment: number;
+  attemptsSinceAdjustment: number;
 }
 
 // Internal: full challenge record kept server-side only.
